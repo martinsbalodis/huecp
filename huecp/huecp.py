@@ -60,7 +60,6 @@ class HueFileBrowserClient(object):
         c.setopt(c.VERBOSE,1)
         c.setopt(c.WRITEFUNCTION, response.write)
         c.perform()
-        c.close()
 
 def main(options, files):
 
