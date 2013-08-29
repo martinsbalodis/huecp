@@ -2,42 +2,40 @@
 """huecp - commandline tool to copy files to HUE"""
 
 import sys
-import requests
 import getpass
 import logging
 from optparse import OptionParser
-
-# patch guess_filename function
-# hue fails if it receives full path to file as filename
-from requests import models
+import cStringIO
+import pycurl
 import ntpath
-def guess_filename_replacement(obj):
-    """Tries to guess the filename of the given object."""
-    name = getattr(obj, 'name', None)
-    if name and name[0] != '<' and name[-1] != '>':
-        return ntpath.basename(name)
-models.guess_filename = guess_filename_replacement
 
 
 class HueClient(object):
 
     def __init__(self, host):
         self.host = host
+        self.c = pycurl.Curl()
 
     def login(self, username):
         password = getpass.getpass()
-
-        data = {'username': username, 'password': password, 'next': '/'}
         url = self.host+"accounts/login/"
-        r = requests.post(url, data=data, allow_redirects=False)
 
-        if r.status_code != 302:
-            logging.info("Login failed")
-            return False
+        c = self.c
+        c.setopt(c.POST, 1)
+        c.setopt(c.FOLLOWLOCATION, 1)
+        c.setopt(c.URL, url)
+        c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
+        c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
+        c.setopt(c.POSTFIELDS, "username="+username+"&password="+password)
+        response = cStringIO.StringIO()
+        c.setopt(c.WRITEFUNCTION, response.write)
+        c.perform()
 
-        self.session_cookies = r.cookies
-
+        # success :/
         return True
+
+    def close(self):
+        self.c.close()
 
 class HueFileBrowserClient(object):
 
@@ -47,13 +45,22 @@ class HueFileBrowserClient(object):
     def upload(self, dest_dir, filename):
         url = self.hueclient.host+'filebrowser/upload/file?dest='+dest_dir
 
-        files = {'hdfs_file': open(filename, 'rb', 4096)}
-        data = {
-            'dest':dest_dir
-        }
+        data = [
+            ("dest", dest_dir),
+            ("hdfs_file", (pycurl.FORM_FILE, filename, pycurl.FORM_FILENAME, ntpath.basename(filename)))
+        ]
 
-        r = requests.post(url, files=files, data=data, cookies=self.hueclient.session_cookies)
-        print r.content
+        c = self.hueclient.c
+        c.setopt(c.POST, 1)
+        c.setopt(c.URL, url)
+        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+        c.setopt(c.HTTPPOST, data)
+        response = cStringIO.StringIO()
+        c.setopt(c.VERBOSE,1)
+        c.setopt(c.WRITEFUNCTION, response.write)
+        c.perform()
+        c.close()
 
 def main(options, files):
 
@@ -65,6 +72,8 @@ def main(options, files):
         fb_client = HueFileBrowserClient(client)
         for filename in files:
             fb_client.upload(options.dest_dir, filename)
+
+        client.close()
 
 def run():
 
