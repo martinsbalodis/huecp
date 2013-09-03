@@ -8,7 +8,7 @@ from optparse import OptionParser
 import cStringIO
 import pycurl
 import ntpath
-
+import json
 
 class HueClient(object):
 
@@ -42,7 +42,35 @@ class HueFileBrowserClient(object):
     def __init__(self, hueclient):
         self.hueclient = hueclient
 
+    def file_exists(self, dest_dir, filename):
+
+        url = self.hueclient.host+'filebrowser/view/'+dest_dir+'/'+filename
+        c = self.hueclient.c
+        c.setopt(c.URL, url)
+        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+        c.perform()
+        status_code = c.getinfo(c.HTTP_CODE)
+        if status_code == 500:
+            return False
+        elif status_code == 200:
+            return True
+        else:
+            raise Exception("unknown status code"+str(status_code))
+
+
     def upload(self, dest_dir, filename):
+
+        _filename = ntpath.basename(filename)
+
+        # first check if file does not exist
+        if self.file_exists(dest_dir, _filename) == True:
+
+            logging.warning("File already exists: "+_filename)
+            return True
+
+        logging.info("Started file upload: "+_filename)
+
         url = self.hueclient.host+'filebrowser/upload/file?dest='+dest_dir
 
         data = [
@@ -57,9 +85,12 @@ class HueFileBrowserClient(object):
         c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
         c.setopt(c.HTTPPOST, data)
         response = cStringIO.StringIO()
-        c.setopt(c.VERBOSE,1)
+        #c.setopt(c.VERBOSE,1)
         c.setopt(c.WRITEFUNCTION, response.write)
         c.perform()
+
+        result = json.loads(response.getvalue())
+        logging.info("File upload status: "+str(result['status']))
 
 def main(options, files):
 
@@ -72,6 +103,7 @@ def main(options, files):
         for filename in files:
             fb_client.upload(options.dest_dir, filename)
 
+        logging.info("Finished")
         client.close()
 
 def run():
