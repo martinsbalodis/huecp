@@ -8,7 +8,6 @@ from optparse import OptionParser
 import cStringIO
 import pycurl
 import ntpath
-import json
 
 class HueClient(object):
 
@@ -22,17 +21,22 @@ class HueClient(object):
 
         c = self.c
         c.setopt(c.POST, 1)
-        c.setopt(c.FOLLOWLOCATION, 1)
+        c.setopt(c.FOLLOWLOCATION, 0)
         c.setopt(c.URL, url)
         c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
         c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
         c.setopt(c.POSTFIELDS, "username="+username+"&password="+password)
         response = cStringIO.StringIO()
         c.setopt(c.WRITEFUNCTION, response.write)
+        #c.setopt(c.VERBOSE,1)
         c.perform()
+        status_code = c.getinfo(c.HTTP_CODE)
 
-        # success :/
-        return True
+        if status_code == 302:
+            return True
+        else:
+            logging.error("Login failed")
+            return False
 
     def close(self):
         self.c.close()
@@ -44,20 +48,24 @@ class HueFileBrowserClient(object):
 
     def file_exists(self, dest_dir, filename):
 
-        url = self.hueclient.host+'filebrowser/view/'+dest_dir+'/'+filename
+        file_path = dest_dir+'/'+filename
+        url = self.hueclient.host+'filebrowser/view/'+ file_path
         c = self.hueclient.c
         c.setopt(c.URL, url)
         c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
         c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+        response = cStringIO.StringIO()
+        c.setopt(c.WRITEFUNCTION, response.write)
         c.perform()
+        response = response.getvalue()
         status_code = c.getinfo(c.HTTP_CODE)
-        if status_code == 500:
-            return False
-        elif status_code == 200:
-            return True
-        else:
-            raise Exception("unknown status code"+str(status_code))
 
+        if file_path in response and status_code == 200:
+            return True
+        elif file_path+" not found" in response and status_code == 500:
+            return False
+        else:
+           raise Exception("unknown status code"+str(status_code))
 
     def upload(self, dest_dir, filename):
 
@@ -89,8 +97,14 @@ class HueFileBrowserClient(object):
         c.setopt(c.WRITEFUNCTION, response.write)
         c.perform()
 
-        result = json.loads(response.getvalue())
-        logging.info("File upload status: "+str(result['status']))
+        try:
+            import json
+            result = json.loads(response.getvalue())
+            logging.info("File upload status: "+str(result['status']))
+        except Exception:
+            pass
+
+        print response.getvalue()
 
 def main(options, files):
 
@@ -100,6 +114,8 @@ def main(options, files):
     client = HueClient(options.host)
     if client.login(options.username):
         fb_client = HueFileBrowserClient(client)
+        for filename in files:
+            logging.info("Will be uploading "+filename)
         for filename in files:
             fb_client.upload(options.dest_dir, filename)
 
