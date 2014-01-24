@@ -62,12 +62,16 @@ class HueFileBrowserClient(object):
         response = response.getvalue()
         status_code = c.getinfo(c.HTTP_CODE)
 
+        if file_path not in response and status_code == 200:
+            print response
+            raise Exception("couldn't find file in response "+file_path)
+
         if file_path in response and status_code == 200:
             return True
         elif file_path+" not found" in response and status_code == 500:
             return False
         else:
-           raise Exception("unknown status code"+str(status_code))
+           raise Exception("unknown status code "+str(status_code))
 
     def upload(self, dest_dir, filename, filename_regex):
 
