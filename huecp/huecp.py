@@ -136,7 +136,7 @@ def main(options, files):
     logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
     filename_regex = None
-    if "filename_regex" in options:
+    if hasattr(options, "filename_regex"):
         filename_regex = options.filename_regex
 
     client = HueClient(options.host)
