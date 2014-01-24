@@ -10,6 +10,7 @@ import cStringIO
 import pycurl
 import ntpath
 import re
+import urllib
 
 class HueClient(object):
 
@@ -62,13 +63,14 @@ class HueFileBrowserClient(object):
         response = response.getvalue()
         status_code = c.getinfo(c.HTTP_CODE)
 
-        if file_path not in response and status_code == 200:
+        file_path_in_response = urllib.urlencode(file_path)
+        if file_path_in_response not in response and status_code == 200:
             print response
-            raise Exception("couldn't find file in response "+file_path)
+            raise Exception("couldn't find file in response "+file_path_in_response)
 
-        if file_path in response and status_code == 200:
+        if file_path_in_response in response and status_code == 200:
             return True
-        elif file_path+" not found" in response and status_code == 500:
+        elif file_path_in_response+" not found" in response and status_code == 500:
             return False
         else:
            raise Exception("unknown status code "+str(status_code))
