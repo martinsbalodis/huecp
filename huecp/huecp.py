@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """huecp - commandline tool to copy files to HUE"""
+import os
 
 import sys
 import getpass
@@ -69,7 +70,22 @@ class HueFileBrowserClient(object):
 
     def upload(self, dest_dir, filename):
 
+        if not dest_dir.endswith("/"):
+            dest_dir = dest_dir+"/"
+
+        if filename.endswith("/"):
+            filename = filename[:-1]
+
         _filename = ntpath.basename(filename)
+
+        if os.path.isdir(filename):
+            # recursively import files
+            for fn in os.listdir(filename):
+                if fn == "." or fn == "..":
+                    return
+                self.upload(dest_dir+_filename+'/', filename+'/'+fn)
+            return
+
 
         # first check if file does not exist
         if self.file_exists(dest_dir, _filename) == True:
