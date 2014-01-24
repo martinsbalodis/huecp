@@ -51,7 +51,7 @@ class HueFileBrowserClient(object):
 
     def file_exists(self, dest_dir, filename):
 
-        file_path = dest_dir+'/'+filename
+        file_path = dest_dir+filename
         url = self.hueclient.host+'filebrowser/view/'+ file_path
         c = self.hueclient.c
         c.setopt(c.URL, url)
@@ -63,7 +63,7 @@ class HueFileBrowserClient(object):
         response = response.getvalue()
         status_code = c.getinfo(c.HTTP_CODE)
 
-        file_path_in_response = urllib.urlencode(file_path)
+        file_path_in_response = dest_dir+urllib.quote_plus(filename)
         if file_path_in_response not in response and status_code == 200:
             print response
             raise Exception("couldn't find file in response "+file_path_in_response)
@@ -74,9 +74,9 @@ class HueFileBrowserClient(object):
                 raise Exception("couldn't find file in response "+file_path_in_response)
             return True
         elif status_code == 500:
-            if file_path_in_response+" not found" not in response:
+            if dest_dir+filename+" not found" not in response:
                 print response
-                raise Exception("couldn't message that file is not found "+file_path_in_response)
+                raise Exception("couldn't find message that file is not found "+file_path_in_response)
             return False
         else:
            raise Exception("unknown status code "+str(status_code))
