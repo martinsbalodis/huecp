@@ -9,6 +9,7 @@ from optparse import OptionParser
 import cStringIO
 import pycurl
 import ntpath
+import re
 
 class HueClient(object):
 
@@ -68,7 +69,7 @@ class HueFileBrowserClient(object):
         else:
            raise Exception("unknown status code"+str(status_code))
 
-    def upload(self, dest_dir, filename):
+    def upload(self, dest_dir, filename, filename_regex):
 
         if not dest_dir.endswith("/"):
             dest_dir = dest_dir+"/"
@@ -78,13 +79,20 @@ class HueFileBrowserClient(object):
 
         _filename = ntpath.basename(filename)
 
+        # recursively import files from subdirectories
         if os.path.isdir(filename):
-            # recursively import files
             for fn in os.listdir(filename):
                 if fn == "." or fn == "..":
                     return
-                self.upload(dest_dir+_filename+'/', filename+'/'+fn)
+                self.upload(dest_dir+_filename+'/', filename+'/'+fn, filename_regex)
             return
+
+        # upload file if its upload is required
+        if filename_regex is not None:
+            r = re.compile(filename_regex)
+            if r.match(filename) is None:
+                logging.info("Ignoring file by regex: "+filename)
+                return
 
 
         # first check if file does not exist
@@ -127,13 +135,17 @@ def main(options, files):
     FORMAT = '%(asctime)-15s %(message)s'
     logging.basicConfig(format=FORMAT, level=logging.DEBUG)
 
+    filename_regex = None
+    if "filename_regex" in options:
+        filename_regex = options.filename_regex
+
     client = HueClient(options.host)
     if client.login(options.username):
         fb_client = HueFileBrowserClient(client)
         for filename in files:
             logging.info("Will be uploading "+filename)
         for filename in files:
-            fb_client.upload(options.dest_dir, filename)
+            fb_client.upload(options.dest_dir, filename, filename_regex)
 
         logging.info("Finished")
         client.close()
@@ -144,6 +156,7 @@ def run():
     parser.add_option("-u", "--username", dest="username", help="Hue user username")
     parser.add_option("-d", "--destination", dest="dest_dir", help="Destination directory")
     parser.add_option("-a", "--hue-access-point", dest="host", help="HUE access point: http://hue.com:8888/")
+    parser.add_option("-r", "--filename-regex", dest="filename_regex", help="only upload files matching regex for example .*\.gz")
     parser.set_defaults(username=None, dest_dir=None)
 
     (options, args) = parser.parse_args()
