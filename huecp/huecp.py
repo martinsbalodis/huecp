@@ -65,17 +65,14 @@ class HueFileBrowserClient(object):
 
         file_path_in_response = dest_dir+urllib.quote_plus(filename)
         if file_path_in_response not in response and status_code == 200:
-            print response
             raise Exception("couldn't find file in response "+file_path_in_response)
 
         if status_code == 200:
             if file_path_in_response not in response:
-                print response
                 raise Exception("couldn't find file in response "+file_path_in_response)
             return True
         elif status_code == 500:
             if dest_dir+filename+" not found" not in response:
-                print response
                 raise Exception("couldn't find message that file is not found "+file_path_in_response)
             return False
         else:
