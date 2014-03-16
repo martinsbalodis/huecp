@@ -14,21 +14,25 @@ import urllib
 
 class HueClient(object):
 
-    def __init__(self, host):
+    def __init__(self, host, username):
         self.host = host
-        self.c = pycurl.Curl()
+        self.password = None
+        self.username = username
 
-    def login(self, username):
-        password = getpass.getpass()
+    def login(self):
+        if self.password is None:
+            password = getpass.getpass()
+            self.password = password
         url = self.host+"accounts/login/"
 
-        c = self.c
+        c = pycurl.Curl()
+        self.c = c
         c.setopt(c.POST, 1)
         c.setopt(c.FOLLOWLOCATION, 0)
         c.setopt(c.URL, url)
         c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
         c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
-        c.setopt(c.POSTFIELDS, "username="+username+"&password="+password)
+        c.setopt(c.POSTFIELDS, "username="+self.username+"&password="+self.password)
         response = cStringIO.StringIO()
         c.setopt(c.WRITEFUNCTION, response.write)
         #c.setopt(c.VERBOSE,1)
@@ -68,6 +72,8 @@ class HueFileBrowserClient(object):
                 status_code = c.getinfo(c.HTTP_CODE)
                 error = False
             except:
+                # try creating a new session
+                self.hueclient.login()
                 error = True
 
         file_path_in_response = dest_dir+urllib.quote_plus(filename)
@@ -157,8 +163,8 @@ def main(options, files):
     if hasattr(options, "filename_regex"):
         filename_regex = options.filename_regex
 
-    client = HueClient(options.host)
-    if client.login(options.username):
+    client = HueClient(options.host, options.username)
+    if client.login():
         fb_client = HueFileBrowserClient(client)
         for filename in files:
             logging.info("Will be uploading "+filename)
