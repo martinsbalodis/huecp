@@ -51,17 +51,24 @@ class HueFileBrowserClient(object):
 
     def file_exists(self, dest_dir, filename):
 
-        file_path = dest_dir+filename
-        url = self.hueclient.host+'filebrowser/view/'+ file_path
-        c = self.hueclient.c
-        c.setopt(c.URL, url)
-        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
-        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
-        response = cStringIO.StringIO()
-        c.setopt(c.WRITEFUNCTION, response.write)
-        c.perform()
-        response = response.getvalue()
-        status_code = c.getinfo(c.HTTP_CODE)
+        error = True
+        while error:
+            try:
+                logging.info("checking whether file already exists "+filename)
+                file_path = dest_dir+filename
+                url = self.hueclient.host+'filebrowser/view/'+ file_path
+                c = self.hueclient.c
+                c.setopt(c.URL, url)
+                c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+                response = cStringIO.StringIO()
+                c.setopt(c.WRITEFUNCTION, response.write)
+                c.setopt(pycurl.TIMEOUT, 10)
+                c.perform()
+                response = response.getvalue()
+                status_code = c.getinfo(c.HTTP_CODE)
+                error = False
+            except:
+                error = True
 
         file_path_in_response = dest_dir+urllib.quote_plus(filename)
         if file_path_in_response not in response and status_code == 200:
@@ -79,6 +86,8 @@ class HueFileBrowserClient(object):
            raise Exception("unknown status code "+str(status_code))
 
     def upload(self, dest_dir, filename, filename_regex):
+
+        logging.info("file upload request: "+filename)
 
         if not dest_dir.endswith("/"):
             dest_dir = dest_dir+"/"
@@ -107,10 +116,10 @@ class HueFileBrowserClient(object):
         # first check if file does not exist
         if self.file_exists(dest_dir, _filename) == True:
 
-            logging.warning("File already exists: "+_filename)
+            logging.warning("File already exists: "+filename)
             return True
 
-        logging.info("Started file upload: "+_filename)
+        logging.info("Started file upload: "+filename)
 
         url = self.hueclient.host+'filebrowser/upload/file?dest='+dest_dir
 
@@ -137,7 +146,7 @@ class HueFileBrowserClient(object):
         except Exception:
             pass
 
-        print response.getvalue()
+        logging.info("Upload finished: "+filename)
 
 def main(options, files):
 
