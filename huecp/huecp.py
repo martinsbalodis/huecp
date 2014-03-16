@@ -132,7 +132,7 @@ class HueFileBrowserClient(object):
         c.setopt(c.POST, 1)
         c.setopt(c.URL, url)
         c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
-        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+        c.setopt(pycurl.TIMEOUT, 300)
         c.setopt(c.HTTPPOST, data)
         response = cStringIO.StringIO()
         #c.setopt(c.VERBOSE,1)
