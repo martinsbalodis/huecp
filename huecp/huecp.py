@@ -11,6 +11,7 @@ import pycurl
 import ntpath
 import re
 import urllib
+import tempfile
 
 class HueClient(object):
 
@@ -19,20 +20,43 @@ class HueClient(object):
         self.password = None
         self.username = username
 
+        # cookie file
+        f = tempfile.NamedTemporaryFile(mode='w+b', delete=False)
+        self.cookiefile = f.name
+        f.close()
+
     def login(self):
         if self.password is None:
             password = getpass.getpass()
             self.password = password
         url = self.host+"accounts/login/"
 
+        # first get CSRF token
         c = pycurl.Curl()
         self.c = c
+        c.setopt(c.FOLLOWLOCATION, 0)
+        c.setopt(c.URL, url)
+        c.setopt(pycurl.COOKIEFILE, self.cookiefile)
+        c.setopt(pycurl.COOKIEJAR, self.cookiefile)
+        response = cStringIO.StringIO()
+        c.setopt(c.WRITEFUNCTION, response.write)
+        #c.setopt(c.VERBOSE,1)
+        c.perform()
+        status_code = c.getinfo(c.HTTP_CODE)
+        if status_code != 200:
+            logging.error("Failed to open login page")
+            return False
+
+        # get csrf token
+        cookies = c.getinfo(pycurl.INFO_COOKIELIST)
+        self.csrf_token = cookies[0].split("\t")[6]
+
         c.setopt(c.POST, 1)
         c.setopt(c.FOLLOWLOCATION, 0)
         c.setopt(c.URL, url)
         c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
-        c.setopt(pycurl.COOKIEFILE, 'huecp-cookies-curl')
-        c.setopt(c.POSTFIELDS, "username="+self.username+"&password="+self.password)
+        c.setopt(pycurl.COOKIEJAR, self.cookiefile)
+        c.setopt(c.POSTFIELDS, "username="+self.username+"&password="+self.password+"&csrfmiddlewaretoken="+self.csrf_token+"&next=/")
         response = cStringIO.StringIO()
         c.setopt(c.WRITEFUNCTION, response.write)
         #c.setopt(c.VERBOSE,1)
@@ -63,7 +87,7 @@ class HueFileBrowserClient(object):
                 url = self.hueclient.host+'filebrowser/view/'+ file_path
                 c = self.hueclient.c
                 c.setopt(c.URL, url)
-                c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+                c.setopt(pycurl.COOKIEFILE, self.hueclient.cookiefile)
                 response = cStringIO.StringIO()
                 c.setopt(c.WRITEFUNCTION, response.write)
                 c.setopt(pycurl.TIMEOUT, 10)
@@ -137,13 +161,20 @@ class HueFileBrowserClient(object):
         c = self.hueclient.c
         c.setopt(c.POST, 1)
         c.setopt(c.URL, url)
-        c.setopt(pycurl.COOKIEFILE, '/tmp/huecp-cookies-curl')
+        c.setopt(pycurl.COOKIEFILE, self.hueclient.cookiefile)
         c.setopt(pycurl.TIMEOUT, 300)
         c.setopt(c.HTTPPOST, data)
         response = cStringIO.StringIO()
         #c.setopt(c.VERBOSE,1)
         c.setopt(c.WRITEFUNCTION, response.write)
+        c.setopt(pycurl.HTTPHEADER, ['X-CSRFToken: '+self.hueclient.csrf_token])
         c.perform()
+
+        status_code = c.getinfo(c.HTTP_CODE)
+        if status_code != 200:
+            logging.info("Upload failed: "+filename)
+            raise Exception("Upload fail")
+
 
         try:
             import json
