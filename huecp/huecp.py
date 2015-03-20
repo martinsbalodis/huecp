@@ -19,6 +19,7 @@ class HueClient(object):
         self.host = host
         self.password = None
         self.username = username
+        self.csrf_token = None
 
         # cookie file
         f = tempfile.NamedTemporaryFile(mode='w+b', delete=False)
@@ -49,7 +50,14 @@ class HueClient(object):
 
         # get csrf token
         cookies = c.getinfo(pycurl.INFO_COOKIELIST)
-        self.csrf_token = cookies[0].split("\t")[6]
+        for cookie in cookies:
+            cookie_data = cookie.split("\t")
+            if cookie_data[5] == 'csrftoken':
+                self.csrf_token = cookie_data[6]
+
+        if self.csrf_token is None:
+            logging.error("CSRF token not found in cookie")
+            raise Exception("CSRF token not found in cookie")
 
         c.setopt(c.POST, 1)
         c.setopt(c.FOLLOWLOCATION, 0)
