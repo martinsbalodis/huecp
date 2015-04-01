@@ -10,7 +10,6 @@ import cStringIO
 import pycurl
 import ntpath
 import re
-import urllib
 import tempfile
 
 class HueClient(object):
@@ -85,14 +84,13 @@ class HueFileBrowserClient(object):
     def __init__(self, hueclient):
         self.hueclient = hueclient
 
-    def file_exists(self, dest_dir, filename):
+    def file_exists(self, remote_file):
 
         error = True
         while error:
             try:
-                logging.info("checking whether file already exists "+filename)
-                file_path = dest_dir+filename
-                url = self.hueclient.host+'filebrowser/view/'+ file_path
+                logging.info("checking whether file already exists "+remote_file)
+                url = self.hueclient.host+'filebrowser/view/'+ remote_file
                 c = self.hueclient.c
                 c.setopt(c.URL, url)
                 c.setopt(pycurl.COOKIEFILE, self.hueclient.cookiefile)
@@ -108,7 +106,7 @@ class HueFileBrowserClient(object):
                 self.hueclient.login()
                 error = True
 
-        file_path_in_response = dest_dir+urllib.quote_plus(filename)
+        file_path_in_response = remote_file
         if file_path_in_response not in response and status_code == 200:
             raise Exception("couldn't find file in response "+file_path_in_response)
 
@@ -117,53 +115,39 @@ class HueFileBrowserClient(object):
                 raise Exception("couldn't find file in response "+file_path_in_response)
             return True
         elif status_code == 500:
-            if dest_dir+filename+" not found" not in response:
+            if remote_file+" not found" not in response:
                 raise Exception("couldn't find message that file is not found "+file_path_in_response)
             return False
         else:
            raise Exception("unknown status code "+str(status_code))
 
-    def upload(self, dest_dir, filename, filename_regex):
+    def upload(self, local_file, remote_file, filename_regex):
 
-        logging.info("file upload request: "+filename)
-
-        if not dest_dir.endswith("/"):
-            dest_dir = dest_dir+"/"
-
-        if filename.endswith("/"):
-            filename = filename[:-1]
-
-        _filename = ntpath.basename(filename)
-
-        # recursively import files from subdirectories
-        if os.path.isdir(filename):
-            for fn in os.listdir(filename):
-                if fn == "." or fn == "..":
-                    return
-                self.upload(dest_dir+_filename+'/', filename+'/'+fn, filename_regex)
-            return
+        logging.info("uploading"+local_file+" to "+remote_file)
 
         # upload file if its upload is required
         if filename_regex is not None:
             r = re.compile(filename_regex)
-            if r.match(filename) is None:
-                logging.info("Ignoring file by regex: "+filename)
+            if r.match(local_file) is None:
+                logging.info("Ignoring file by regex: "+local_file)
                 return
 
 
         # first check if file does not exist
-        if self.file_exists(dest_dir, _filename) == True:
+        if self.file_exists(remote_file) == True:
 
-            logging.warning("File already exists: "+filename)
+            logging.warning("Remote file already exists: "+remote_file)
             return True
 
-        logging.info("Started file upload: "+filename)
+        logging.info("Started file upload: "+remote_file)
+
+        dest_dir = os.path.dirname(remote_file)+"/"
 
         url = self.hueclient.host+'filebrowser/upload/file?dest='+dest_dir
 
         data = [
             ("dest", dest_dir),
-            ("hdfs_file", (pycurl.FORM_FILE, filename, pycurl.FORM_FILENAME, ntpath.basename(filename)))
+            ("hdfs_file", (pycurl.FORM_FILE, local_file, pycurl.FORM_FILENAME, ntpath.basename(local_file)))
         ]
 
         c = self.hueclient.c
@@ -180,7 +164,7 @@ class HueFileBrowserClient(object):
 
         status_code = c.getinfo(c.HTTP_CODE)
         if status_code != 200:
-            logging.info("Upload failed: "+filename)
+            logging.info("Upload failed: "+local_file)
             raise Exception("Upload fail")
 
 
@@ -191,7 +175,30 @@ class HueFileBrowserClient(object):
         except Exception:
             pass
 
-        logging.info("Upload finished: "+filename)
+        logging.info("Upload finished: "+local_file)
+
+def get_upload_file_paths(files, dest_dir):
+
+    result_files = []
+
+    for filename in files:
+        # a file was given
+        if os.path.isfile(filename):
+            local_file = filename
+            filename = os.path.basename(filename)
+            remote_file = os.path.join(dest_dir, filename)
+            result_files.append((local_file, remote_file))
+            continue
+
+        # a directory was given
+        basedir = os.path.dirname(os.path.realpath(filename))
+        for root, subdirs, files2 in os.walk(filename):
+            for filename2 in files2:
+                local_file = os.path.join(root, filename2)
+                destdir_file_local = local_file[len(basedir):]
+                remote_file = dest_dir+destdir_file_local
+                result_files.append((local_file, remote_file))
+    return result_files
 
 def main(options, files):
 
@@ -205,10 +212,13 @@ def main(options, files):
     client = HueClient(options.host, options.username)
     if client.login():
         fb_client = HueFileBrowserClient(client)
-        for filename in files:
-            logging.info("Will be uploading "+filename)
-        for filename in files:
-            fb_client.upload(options.dest_dir, filename, filename_regex)
+
+        file_paths = get_upload_file_paths(files, options.dest_dir)
+        for path in file_paths:
+            logging.info("Will be uploading "+path[0]+" to "+path[1])
+
+        for path in file_paths:
+            fb_client.upload(path[0], path[1], filename_regex)
 
         logging.info("Finished")
         client.close()
